@@ -1,0 +1,43 @@
+#tasks_wrapper input,
+#tasks_wrapper select {
+  width: auto;
+  display: inline;
+}
+
+::-webkit-file-upload-button {
+  display: inline-block;
+  vertical-align: middle;
+  padding: .85em 1em;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: 0;
+  -webkit-transition: background-color .25s ease-out,color .25s ease-out;
+  transition: background-color .25s ease-out,color .25s ease-out;
+  font-size: .9rem;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  background-color: #1779ba;
+  color: #fefefe;
+}
+
+.cancel-btn {
+  margin-bottom: 0;
+}
+
+.error {
+  color: red;
+  font-weight: bold;
+}
+
+.failed {
+  background-color: lightcoral;
+}
+
+.delivered {
+  background-color: lightgreen;
+}
+
+.in-process {
+  background-color: lightyellow;
+}

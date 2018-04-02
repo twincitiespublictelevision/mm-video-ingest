@@ -1,0 +1,53 @@
+version: 2
+jobs:
+  checkout:
+    docker:
+      - image: circleci/php:7.1.4
+    steps:
+      - restore_cache:
+          key: repo-{{ .Branch }}
+      - checkout
+      - run: echo $CIRCLE_SHA1 > .circle-sha
+      - save_cache:
+          key: repo-{{ .Branch }}-{{ checksum ".circle-sha" }}
+          paths:
+            - ~/project
+
+  php_test:
+    docker:
+      - image: circleci/php:7.1.4
+      - image: mysql:5.6
+        environment:
+          - MYSQL_ROOT_PASSWORD=ubuntu
+          - MYSQL_DATABASE=circle_test
+      - image: memcached:latest
+    steps:
+      - run: echo $CIRCLE_SHA1 > .circle-sha
+      - restore_cache:
+          key: repo-{{ .Branch }}-{{ checksum ".circle-sha" }}
+      - run:
+          name: Install PHP extensions
+          command: |
+            sudo docker-php-ext-install pdo_mysql
+            sudo -s apt-get install libmemcached-dev zlib1g-dev
+            sudo pecl install memcached <<< ''
+            sudo docker-php-ext-enable memcached
+      - run:
+          name: Install app
+          command: composer install
+      - run:
+          command: |
+            cp .env.circle .env
+            php artisan migrate --force
+      - run:
+          name: Run PHP Unit Tests
+          command: ./vendor/bin/phpunit
+
+workflows:
+  version: 2
+  test_and_build:
+    jobs:
+      - checkout
+      - php_test:
+          requires:
+            - checkout
