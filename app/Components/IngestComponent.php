@@ -2,7 +2,7 @@
 
 namespace App\Components;
 
-use App\Models\TaskModel;
+use App\Models\Task;
 use twincitiespublictelevision\PBS_Media_Manager_Client\PBS_Media_Manager_API_Client;
 
 /**
@@ -32,7 +32,9 @@ class IngestComponent {
   private $_validator;
 
   /**
-   * Constructor method for the class
+   * IngestComponent constructor.
+   * @param PBS_Media_Manager_API_Client $client
+   * @param TaskValidationComponent $validator
    */
   public function __construct(PBS_Media_Manager_API_Client $client, TaskValidationComponent $validator) {
     $this->_client = $client;
@@ -46,14 +48,14 @@ class IngestComponent {
    *
    * If any container step fails then the entire ingest will fail.
    *
-   * @param TaskModel $task The task to attempt to ingest
-   * @return string A status string defined by the TaskModel
+   * @param Task $task The task to attempt to ingest
+   * @return string A status string defined by the Task
    */
-  public function ingest(TaskModel $task) {
+  public function ingest(Task $task) {
 
     // If the task is starting in the pending state then prior to ingesting,
     // perform a validation step
-    if ($task->status !== TaskModel::PENDING || $this->_validator->validate($task)) {
+    if ($task->status !== Task::PENDING || $this->_validator->validate($task)) {
 
       // Determine if the task should be ingested as a special or an episode
       if ($task->episode_number === null) {
@@ -64,7 +66,7 @@ class IngestComponent {
     } else {
 
       // If validation fails, then immediately cancel the task
-      $task->status = TaskModel::CANCELLED;
+      $task->status = Task::CANCELLED;
       $task->failure_reason = 'Task slugs are inconsistent with existing data in Media Manager';
     }
 
@@ -82,10 +84,10 @@ class IngestComponent {
    * If a Special container to save to can not be determined, then the task
    * will fail.
    *
-   * @param TaskModel $task The task to attempt to ingest
-   * @return string A status string defined by the TaskModel
+   * @param Task $task The task to attempt to ingest
+   * @return string A status string defined by the Task
    */
-  private function _ingestToSpecial(TaskModel $task) {
+  private function _ingestToSpecial(Task $task) {
 
     // Lookup the special id to use for creation or create a special if one
     // does not already exist
@@ -100,7 +102,7 @@ class IngestComponent {
     $task->failure_reason = json_encode($specialResp);
 
     // If a special couldn't be fetched then fail
-    return TaskModel::SPECIAL_FAILED;
+    return Task::SPECIAL_FAILED;
   }
 
   /**
@@ -109,10 +111,10 @@ class IngestComponent {
    *
    * If both lookup and creation fail then the entire task will fail
    *
-   * @param TaskModel $task The task to determine a container for
+   * @param Task $task The task to determine a container for
    * @return string An id string that uniquely defines a Special
    */
-  private function _getSpecialId(TaskModel $task) {
+  private function _getSpecialId(Task $task) {
 
     // Check to see if a Special already exists
     $special = $this->_client->get_special($task->parent_slug);
@@ -146,10 +148,10 @@ class IngestComponent {
    *
    * If at any point a container can not be determined the ingest will fail
    *
-   * @param TaskModel $task The task to attempt to ingest
-   * @return string A status string defined by the TaskModel
+   * @param Task $task The task to attempt to ingest
+   * @return string A status string defined by the Task
    */
-  private function _ingestToEpisode(TaskModel $task) {
+  private function _ingestToEpisode(Task $task) {
 
     // Lookup the season id to use for creation or create a season if one
     // does not already exist
@@ -168,14 +170,14 @@ class IngestComponent {
       $task->failure_reason = json_encode($episodeResp);
 
       // If an episode couldn't be fetched then fail
-      return TaskModel::EPISODE_FAILED;
+      return Task::EPISODE_FAILED;
     }
 
     // Log the failure reason to the task
     $task->failure_reason = json_encode($seasonResp);
 
     // If a season couldn't be fetched then fail
-    return TaskModel::SEASON_FAILED;
+    return Task::SEASON_FAILED;
   }
 
   /**
@@ -184,10 +186,10 @@ class IngestComponent {
    *
    * If both lookup and creation fail then the entire task will fail
    *
-   * @param TaskModel $task The task to determine a container for
+   * @param Task $task The task to determine a container for
    * @return string An id string that uniquely defines a Season
    */
-  private function _getSeasonId(TaskModel $task) {
+  private function _getSeasonId(Task $task) {
 
     // Look up the Season from the task
     $season = $this->_lookupSeason($task);
@@ -200,22 +202,33 @@ class IngestComponent {
     }
 
     // If it could not be found, then try to create a new one
-    return $this->_client->create_child(
-      $task->show_slug,
-      'show',
-      'season',
-      ['ordinal' => $task->getSeasonNumber()]
-    );
+    $show = $this->_client->get_show($task->show_slug);
+
+    if (isset($show['data']) &&
+      isset($show['data']['attributes']) &&
+      isset($show['data']['attributes']['ordinal_season'])) {
+
+      return $this->_client->create_child(
+        $task->show_slug,
+        'show',
+        'season',
+        [
+          'ordinal' => $show['data']['attributes']['ordinal_season'] ? $task->getSeasonNumber() : $task->getSeasonYear()
+        ]
+      );
+    }
+
+    return null;
   }
 
   /**
    * Searches the Media Manager API for a Season object to create the
    * Episode under. If a matching one can not be found, null is returned
    *
-   * @param TaskModel $task The task to lookup a season for
+   * @param Task $task The task to lookup a season for
    * @return array|null Returns the id of the found season or null if none can be found
    */
-  private function _lookupSeason(TaskModel $task) {
+  private function _lookupSeason(Task $task) {
 
     // Look up the show with the Media Manager
     $show = $this->_client->get_show($task->show_slug);
@@ -228,7 +241,7 @@ class IngestComponent {
       $seasons = $this->_client->get_show_seasons(
         $task->show_slug,
         [
-          'ordinal' => $show['data']['attributes']['ordinal_season'] ? $task->getSeasonNumber() : $task->getParentPremiereYear()
+          'ordinal' => $show['data']['attributes']['ordinal_season'] ? $task->getSeasonNumber() : $task->getSeasonYear()
         ]
       );
 
@@ -245,10 +258,11 @@ class IngestComponent {
    *
    * If both lookup and creation fail then the entire task will fail
    *
-   * @param TaskModel $task The task to determine a container for
+   * @param Task $task The task to determine a container for
+   * @param string $seasonId The season to create under if an episode is not found
    * @return string An id string that uniquely defines a Episode
    */
-  private function _getEpisodeId(TaskModel $task, $seasonId) {
+  private function _getEpisodeId(Task $task, $seasonId) {
 
     // Look up the Episode from the task
     $episode = $this->_client->get_episode($task->parent_slug);
@@ -291,12 +305,12 @@ class IngestComponent {
    * either an episode or a special. If an object already exists it will be
    * updated. If there is not then one will be created.
    *
-   * @param TaskModel $task The task to ingest
+   * @param Task $task The task to ingest
    * @param string $parentId The id of the container to ingest to
    * @param string $parentType The type of the container to ingest to
-   * @return string A status string defined by the TaskModel
+   * @return string A status string defined by the Task
    */
-  private function _ingestToContainer(TaskModel $task, $parentId, $parentType) {
+  private function _ingestToContainer(Task $task, $parentId, $parentType) {
 
     // Initially check the task for a content id. If a content id has been
     // determined for the task then perform the PATCH to request to ingest
@@ -309,7 +323,7 @@ class IngestComponent {
 
       // Check that the asset successfully updated
       if ($updateResp === true) {
-        return TaskModel::IN_PROGRESS;
+        return Task::IN_PROGRESS;
       }
 
       // Log the asset failure to the task
@@ -335,9 +349,9 @@ class IngestComponent {
         // If both fields are already cleared, then move the task to staged,
         // otherwise leave the task in staging
         if ($clearResult === true) {
-          return TaskModel::STAGED;
+          return Task::STAGED;
         } else {
-          return TaskModel::STAGING;
+          return Task::STAGING;
         }
       }
 
@@ -346,7 +360,7 @@ class IngestComponent {
     }
 
     // Return an asset failure
-    return TaskModel::ASSET_FAILED;
+    return Task::ASSET_FAILED;
   }
 
   /**
@@ -355,10 +369,12 @@ class IngestComponent {
    *
    * If both lookup and creation fail then the entire task will fail
    *
-   * @param TaskModel $task The task to update or create
+   * @param Task $task The task to update or create
+   * @param string $parentId Parent object to create under if necessary
+   * @param string $parentType Parent object type to create under if necessary
    * @return string An id string that uniquely defines an asset
    */
-  private function _getAssetId(TaskModel $task, $parentId, $parentType) {
+  private function _getAssetId(Task $task, $parentId, $parentType) {
 
     // Look up the Asset from the task
     $asset = $this->_client->get_asset($task->slug);
@@ -392,12 +408,12 @@ class IngestComponent {
    *
    * If either step fails then the entire task will fail.
    *
-   * @param TaskModel $task The task to create an Asset from
+   * @param Task $task The task to create an Asset from
    * @param string $parentId The id of the parent to assign the Asset to
    * @param string $parentType The type of the parent to assign the Asset to
-   * @return string A status string defined by the TaskModel
+   * @return string A status string defined by the Task
    */
-  private function _createAsset(TaskModel $task, $parentId, $parentType) {
+  private function _createAsset(Task $task, $parentId, $parentType) {
 
     // Check the encore date to make sure it is not empty. If it is then use
     // the premiered date instead
@@ -434,11 +450,11 @@ class IngestComponent {
    * media files from the asset. This does not result in immediate deletion
    * of the files and is unsafe to call immediately before setting files
    *
-   * @param TaskModel $task The task to remove files for
+   * @param Task $task The task to remove files for
    * @param array $response The API representation of the asset for the task
    * @return bool True if both video and caption are cleared, false otherwise
    */
-  private function _clearAssetMediaFiles(TaskModel $task, $response) {
+  private function _clearAssetMediaFiles(Task $task, $response) {
 
     // Get the current video and caption status
     $videoStatus = $this->_checkVideoStatus($response['data']);
@@ -477,10 +493,10 @@ class IngestComponent {
    * Attempts to attach media files to a specific asset so that it begins
    * ingesting into PBS's system
    *
-   * @param TaskModel $task The task to add media files for
+   * @param Task $task The task to add media files for
    * @return array|bool True on success and an error array on failure
    */
-  private function _addAssetMediaFiles(TaskModel $task) {
+  private function _addAssetMediaFiles(Task $task) {
 
     // Check the encore date to make sure it is not empty. If it is then use
     // the premiered date instead
@@ -536,11 +552,11 @@ class IngestComponent {
    * Given a Task and its associated Media Manager response, returns a computed
    * new status
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @param array $response
    * @return string
    */
-  public function getIngestTaskStatus(TaskModel $task, array $response) {
+  public function getIngestTaskStatus(Task $task, array $response) {
 
     // Skip checking if a PBS Content Id has yet to be assigned
     if (!empty($task->pbs_content_id)) {
@@ -553,28 +569,28 @@ class IngestComponent {
 
       // Check for a successful or failed ingest depending of the current
       // state of the task
-      if ($task->status === TaskModel::STAGING) {
+      if ($task->status === Task::STAGING) {
         if ($videoStatus === IngestComponent::VIDEO_FAILED ||
             $captionStatus === IngestComponent::CAPTION_FAILED) {
-          return TaskModel::ASSET_FAILED;
+          return Task::ASSET_FAILED;
         } elseif ($videoStatus === IngestComponent::VIDEO_CLEAR &&
                   $captionStatus === IngestComponent::CAPTION_CLEAR) {
-          return TaskModel::STAGED;
+          return Task::STAGED;
         } else {
 
           // Otherwise if the task is still in a staging state and has not
           // cleared or failed, send another clear request
           $this->_clearAssetMediaFiles($task, $response);
         }
-      } elseif ($task->status === TaskModel::IN_PROGRESS) {
+      } elseif ($task->status === Task::IN_PROGRESS) {
         if ($videoStatus === IngestComponent::VIDEO_FAILED ||
             $videoStatus === IngestComponent::VIDEO_CLEAR ||
             $captionStatus === IngestComponent::CAPTION_FAILED ||
             $captionStatus === IngestComponent::CAPTION_CLEAR) {
-          return TaskModel::ASSET_FAILED;
+          return Task::ASSET_FAILED;
         } elseif ($videoStatus === IngestComponent::VIDEO_DONE &&
                   $captionStatus === IngestComponent::CAPTION_DONE) {
-          return TaskModel::DONE;
+          return Task::DONE;
         }
       }
     }
@@ -668,10 +684,10 @@ class IngestComponent {
    * Given a task and a Media Manager response, updates the task with the status
    * of the asset
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @param array $response
    */
-  public function updateStatus(TaskModel $task, array $response) {
+  public function updateStatus(Task $task, array $response) {
 
     // Update the status of the ingest task
     $task->status = $this->getIngestTaskStatus($task, $response);
@@ -680,10 +696,10 @@ class IngestComponent {
   /**
    * Attaches a legacy tp media id from a Media Manager response to a Task
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @param array $response
    */
-  public function addLegacyTPMediaId(TaskModel $task, array $response) {
+  public function addLegacyTPMediaId(Task $task, array $response) {
 
     if (
       isset(
@@ -700,10 +716,10 @@ class IngestComponent {
    * Updates the state of an ingest task with response data from the API while a
    * task is preparing or in progress
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @return string
    */
-  public function updateIngestTask(TaskModel $task) {
+  public function updateIngestTask(Task $task) {
 
     // Skip checking if a PBS Content Id has yet to be assigned
     if (!empty($task->pbs_content_id)) {

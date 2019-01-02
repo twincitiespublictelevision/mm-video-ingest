@@ -2,9 +2,7 @@
 
 namespace App\Components;
 
-use App\Components\ConsistencyValidationComponent;
-use App\Components\ParameterValidationComponent;
-use App\Models\TaskModel;
+use App\Models\Task;
 use App\Models\ValidationResult;
 use twincitiespublictelevision\PBS_Media_Manager_Client\PBS_Media_Manager_API_Client;
 
@@ -32,10 +30,10 @@ class TaskValidationComponent {
   /**
    * Returns validation results for parameter consistency and content.
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @return ValidationResult
    */
-  public function validate(TaskModel $task) {
+  public function validate(Task $task) {
 
     $result = new ValidationResult(true);
 

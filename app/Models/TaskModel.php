@@ -4,28 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class TaskModel extends Model {
+class TaskModel extends Model implements Task {
   protected $table = 'task';
-
-  const PENDING = 'pending';
-  const STAGING = 'staging';
-  const STAGED = 'staged';
-  const IN_PROGRESS = 'in_progress';
-  const CANCELLED = 'cancelled';
-  const SEASON_FAILED = 'season_failed';
-  const SPECIAL_FAILED = 'special_failed';
-  const EPISODE_FAILED = 'episode_failed';
-  const ASSET_FAILED = 'asset_failed';
-  const DONE = 'done';
-
-  const OUT_OF_INGEST_TASKS = [
-    TaskModel::PENDING,
-    TaskModel::SEASON_FAILED,
-    TaskModel::SPECIAL_FAILED,
-    TaskModel::EPISODE_FAILED,
-    TaskModel::ASSET_FAILED,
-    TaskModel::DONE
-  ];
 
   protected $fillable = [
     'title',
@@ -76,6 +56,15 @@ class TaskModel extends Model {
    */
   public function getParentPremiereYear() {
     return substr($this->parent_premiered_on, 0, 4);
+  }
+
+  /**
+   * Extracts the four digit year that indicates the season of the parent
+   *
+   * @return string
+   */
+  public function getSeasonYear() {
+    return $this->getParentPremiereYear();
   }
 
   /**

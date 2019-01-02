@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Components\IngestComponent;
+use App\Components\TaskMapper;
+use App\Models\Task;
 use App\Models\TaskModel;
 use Illuminate\Console\Command;
 
@@ -28,14 +30,14 @@ class IngestNext extends Command {
   public function fire(IngestComponent $ingester) {
 
     // Get the list of currently processing tasks
-    $processingTasks = TaskModel::where('status', TaskModel::IN_PROGRESS)
+    $processingTasks = TaskModel::where('status', Task::IN_PROGRESS)
       ->count();
 
     // Check to make sure we are below the maximum of allowed concurrent tasks
     if ($processingTasks < (int) env('CONCURRENT_TASKS')) {
 
       // Grab the next available tasks
-      $availableTasks = TaskModel::whereIn('status', [TaskModel::PENDING, TaskModel::STAGED])
+      $availableTasks = TaskModel::whereIn('status', [Task::PENDING, Task::STAGED])
         ->orderBy('id', 'ASC')
         ->get();
 
@@ -50,12 +52,12 @@ class IngestNext extends Command {
           // the same slug already processing
           $inProcessCheck = TaskModel::where('slug', $task->slug)
               ->where('id', '!=', $task->id)
-              ->where('status', [TaskModel::STAGING, TaskModel::STAGED, TaskModel::IN_PROGRESS])
+              ->where('status', [Task::STAGING, Task::STAGED, Task::IN_PROGRESS])
               ->count() > 0;
 
           // If it isn't already processing then start it
           if (!$inProcessCheck) {
-            if ($ingester->ingest($task) === TaskModel::IN_PROGRESS) {
+            if ($ingester->ingest(TaskMapper::map($task)) === Task::IN_PROGRESS) {
               $processingTasks++;
             }
           }

@@ -2,7 +2,7 @@
 
 namespace App\Components;
 
-use App\Models\TaskModel;
+use App\Models\Task;
 use App\Models\ValidationResult;
 use twincitiespublictelevision\PBS_Media_Manager_Client\PBS_Media_Manager_API_Client;
 
@@ -39,10 +39,10 @@ class ConsistencyValidationComponent {
    * parent_slug, and slug fields are together consistent with the data already
    * in the Media Manager
    *
-   * @param TaskModel $task
+   * @param Task $task
    * @return bool
    */
-  public function validate(TaskModel $task) {
+  public function validate(Task $task) {
 
     // Start by checking if this is an update to an existing asset. If it is,
     // then all of the needed validation data is in that object
@@ -103,10 +103,10 @@ class ConsistencyValidationComponent {
    * parent_slug and the show_slug
    *
    * @param array $response
-   * @param TaskModel $task
+   * @param Task $task
    * @return bool
    */
-  private function _validateAsset(array $response, TaskModel $task) {
+  private function _validateAsset(array $response, Task $task) {
 
     if (
       !isset(

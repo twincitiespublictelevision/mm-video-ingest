@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Components\IngestComponent;
+use App\Components\TaskMapper;
+use App\Models\Task;
 use App\Models\TaskModel;
 use Illuminate\Console\Command;
 
@@ -26,11 +28,11 @@ class UpdateTasks extends Command {
    * Fires the command
    */
   public function fire(IngestComponent $ingester) {
-    $updatableTasks = TaskModel::whereIn('status', [TaskModel::STAGING, TaskModel::IN_PROGRESS])
+    $updatableTasks = TaskModel::whereIn('status', [Task::STAGING, Task::IN_PROGRESS])
       ->get();
 
     foreach ($updatableTasks as $updatableTask) {
-      $ingester->updateIngestTask($updatableTask);
+      $ingester->updateIngestTask(TaskMapper::map($updatableTask));
     }
   }
 }

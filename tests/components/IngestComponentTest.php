@@ -111,7 +111,7 @@ class IngestComponentTest extends TestCase {
       'status' => TaskModel::PENDING
     ]);
 
-    $this->client->expects($this->once())
+    $this->client->expects($this->exactly(2))
       ->method('get_show')
       ->with($task->show_slug)
       ->willReturn([
@@ -147,6 +147,54 @@ class IngestComponentTest extends TestCase {
     );
   }
 
+  public function testIngestCreatesNonOrdinalSeason() {
+
+    $this->client->method('get_request')->willReturn(
+      ['errors' => ['info' => [], 'response' => null]]
+    );
+
+    /**
+     * @var \App\Models\Task $task
+     */
+    $task = factory(TaskModel::class)->make([
+      'status' => TaskModel::PENDING
+    ]);
+
+    $this->client->expects($this->exactly(2))
+      ->method('get_show')
+      ->with($task->show_slug)
+      ->willReturn([
+        'data' => [
+          'attributes' => [
+            'ordinal_season' => false
+          ]
+        ]
+      ]);
+
+    $this->client->expects($this->once())
+      ->method('get_show_seasons')
+      ->with(
+        $task->show_slug,
+        ['ordinal' => $task->getSeasonYear()]
+      );
+
+    $this->client->expects($this->once())
+      ->method('create_child')
+      ->with(
+        $task->show_slug,
+        'show',
+        'season',
+        [
+          'ordinal' => $task->getSeasonYear(),
+        ]
+      );
+
+    $ingestor = new IngestComponent($this->client, $this->validator);
+    $this->assertEquals(
+      TaskModel::SEASON_FAILED,
+      $ingestor->ingest($task)
+    );
+  }
 
   public function testHandlesSeasonCreateError() {
     $this->client->method('get_request')->willReturn(
@@ -157,7 +205,7 @@ class IngestComponentTest extends TestCase {
       'status' => TaskModel::PENDING
     ]);
 
-    $this->client->expects($this->once())
+    $this->client->expects($this->exactly(2))
       ->method('get_show')
       ->with($task->show_slug)
       ->willReturn([
